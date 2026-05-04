@@ -4,37 +4,25 @@
       "title": "Глобальный Вайп и Обновление 2.0",
       "short": "Сервер вайпнут. Добавлен новый данж.",
       "full": "Уважаемые игроки! На сервере прошел глобальный вайп. Мы обновили экономику, добавили огромный подземный бункер и новые виды зараженных. Удачи в выживании!",
-      "image": "https://raw.githubusercontent.com/onlinemendez-code/LauncherUNDEADH-API/refs/heads/main/77005cdbe89311ef8fbe3e0ed56e7aeb_1.jpeg"
+      "image": "https://raw.githubusercontent.com/onlinemendez-code/LauncherUNDEADH-API/main/77005cdbe89311ef8fbe3e0ed56e7aeb_1.jpeg"
     },
     {
       "title": "Ивент: Битва за Алтарь",
       "short": "Воскресенье, 18:00 по МСК",
       "full": "В это воскресенье на радиостанции Алтарь пройдет масштабный ивент. Задача кланов: удержать точку 30 минут. Победители получат уникальный лут и транспорт.",
-      "image": "https://github.com/onlinemendez-code/LauncherUNDEADH-API/blob/main/BObSfNjw3w4.jpg?raw=true"
+      "image": "https://raw.githubusercontent.com/onlinemendez-code/LauncherUNDEADH-API/main/BObSfNjw3w4.jpg"
     },
     {
       "title": "Глобальный Вайп и Обновление 2.0",
       "short": "Сервер вайпнут. Добавлен новый данж.",
       "full": "Уважаемые игроки! На сервере прошел глобальный вайп. Мы обновили экономику, добавили огромный подземный бункер и новые виды зараженных. Удачи в выживании!",
-      "image": "https://github.com/onlinemendez-code/LauncherUNDEADH-API/blob/main/HMBpzFwX9ik.jpg?raw=true"
+      "image": "https://raw.githubusercontent.com/onlinemendez-code/LauncherUNDEADH-API/main/HMBpzFwX9ik.jpg"
     },
     {
       "title": "Глобальный Вайп и Обновление 2.0",
       "short": "Сервер вайпнут. Добавлен новый данж.",
       "full": "Уважаемые игроки! На сервере прошел глобальный вайп. Мы обновили экономику, добавили огромный подземный бункер и новые виды зараженных. Удачи в выживании!",
-      "image": "https://github.com/onlinemendez-code/LauncherUNDEADH-API/blob/main/i.jpeg?raw=true"
-    },
-    {
-      "title": "",
-      "short": "",
-      "full": "",
-      "image": ""
-    },
-    {
-      "title": "",
-      "short": "",
-      "full": "",
-      "image": ""
+      "image": "https://raw.githubusercontent.com/onlinemendez-code/LauncherUNDEADH-API/main/i.jpeg"
     }
   ],
   "donate": [
@@ -42,13 +30,13 @@
       "title": "VIP Статус (30 Дней)",
       "short": "Приоритетная очередь, префикс в чате",
       "url": "https://discord.gg/huyNenHwpb",
-      "image": "https://github.com/onlinemendez-code/LauncherUNDEADH-API/blob/main/i.jpeg?raw=true"
+      "image": "https://raw.githubusercontent.com/onlinemendez-code/LauncherUNDEADH-API/main/i.jpeg"
     },
     {
       "title": "Кастомная База",
       "short": "Личная постройка для вашего клана",
       "url": "https://vk.com/undeadheaven",
-      "image": "https://github.com/onlinemendez-code/LauncherUNDEADH-API/blob/main/HMBpzFwX9ik.jpg?raw=true"
+      "image": "https://raw.githubusercontent.com/onlinemendez-code/LauncherUNDEADH-API/main/HMBpzFwX9ik.jpg"
     }
   ],
   "map_events": [
