@@ -1,0 +1,29 @@
+name: Sync map_live.json from convoy server
+
+on:
+  repository_dispatch:
+    types: [map_live_update]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write map_live.json
+        env:
+          CONTENT_B64: ${{ github.event.client_payload.content }}
+          FILE_PATH: ${{ github.event.client_payload.path }}
+          COMMIT_MSG: ${{ github.event.client_payload.message }}
+        run: |
+          FILE_PATH="${FILE_PATH:-map_live.json}"
+          echo "$CONTENT_B64" | base64 -d > "$FILE_PATH"
+          git config user.name "convoy-map-bot"
+          git config user.email "convoy-map-bot@users.noreply.github.com"
+          git add "$FILE_PATH"
+          git diff --staged --quiet && exit 0
+          git commit -m "${COMMIT_MSG:-map: convoy markers}"
+          git push
