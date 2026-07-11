@@ -17,7 +17,8 @@ INNER_W = 1120
 COMPASS_H = 52
 MAP_H = 580
 INNER_H = COMPASS_H + MAP_H
-PAD_TOP = 46
+LABEL_BAND_H = 54
+PAD_TOP = LABEL_BAND_H + 34
 PAD_SIDE = 40
 PAD_BOTTOM = 68
 
@@ -165,6 +166,29 @@ def draw_led(draw: ImageDraw.ImageDraw, x: int, y: int, color: tuple[int, int, i
     draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=color)
 
 
+def draw_brand_label(
+    draw: ImageDraw.ImageDraw,
+    shell: tuple[int, int, int, int],
+    screen_top: int,
+    label: str,
+    sub: str,
+    pal: Palette,
+) -> None:
+    font_l = load_font(18, bold=True)
+    font_s = load_font(12, bold=False)
+
+    tx = shell[0] + 36
+    ty = shell[1] + 14
+    lb = font_l.getbbox(label)
+    sb = font_s.getbbox(sub)
+    text_w = max(lb[2] - lb[0], sb[2] - sb[0])
+    text_h = (lb[3] - lb[1]) + 18 + (sb[3] - sb[1])
+    plate = (tx - 10, ty - 6, tx + text_w + 18, min(ty + text_h + 8, screen_top - 8))
+    rounded_rect(draw, plate, 6, (*pal.body_dark[:3], 210), pal.bezel, 1)
+    draw.text((tx, ty), label, font=font_l, fill=pal.label)
+    draw.text((tx, ty + 20), sub, font=font_s, fill=(*pal.label[:3], 220))
+
+
 def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
     w, h = canvas_size()
     base = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -215,16 +239,13 @@ def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
 
     if style == "garmin":
         draw_led(draw, outer[2] - 52, outer[1] + 24, (70, 210, 90, 255))
-        label = "GARMIN"
-        sub = "FORETREX 401"
+        label, sub = "GARMIN", "FORETREX 401"
     elif style == "soviet":
-        # Rivets along sides
         for yy in range(outer[1] + 60, outer[3] - 40, 48):
             draw.ellipse((outer[0] + 14, yy, outer[0] + 24, yy + 10), fill=pal.screw)
             draw.ellipse((outer[2] - 24, yy, outer[2] - 14, yy + 10), fill=pal.screw)
         label, sub = "ПРИБОР", "НАВИГАЦИИ"
     elif style == "carbon":
-        # Carbon weave hint
         rng = random.Random(seed + 3)
         for y in range(outer[1] + 20, outer[3] - 20, 6):
             for x in range(outer[0] + 20, outer[2] - 20, 14):
@@ -232,7 +253,6 @@ def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
                 draw.line((x, y, x + 8, y + 6), fill=(c, c, c + 2, 70), width=1)
         label, sub = "NAV", "DISPLAY"
     elif style == "field":
-        # Worn paint chips
         rng = random.Random(seed + 9)
         for _ in range(40):
             x = rng.randint(outer[0] + 10, outer[2] - 10)
@@ -243,22 +263,18 @@ def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
         draw_led(draw, outer[2] - 52, outer[1] + 24, (220, 170, 48, 255))
         label, sub = "TACTICAL", "GPS"
 
-    font_l = load_font(22, bold=True)
-    font_s = load_font(14, bold=False)
-    tx = shell[0] + 42
-    ty = shell[1] + 18
-    draw.text((tx, ty), label, font=font_l, fill=pal.label)
-    draw.text((tx, ty + 24), sub, font=font_s, fill=(*pal.label[:3], 210))
+    draw_brand_label(draw, shell, iy0 - 14, label, sub, pal)
 
+    menu_font = load_font(12, bold=True)
+    pwr_bb = menu_font.getbbox("PWR")
     rounded_rect(draw, (ix0 + 36, iy1 + 20, ix1 - 36, iy1 + 48), 9, pal.body_dark, pal.bezel, 2)
     draw.line((ix0 + 50, iy1 + 26, ix1 - 50, iy1 + 26), fill=pal.body_light, width=1)
-    draw.text((ix0 + 50, iy1 + 30), "MENU", font=load_font(12, bold=True), fill=pal.label)
-    draw.text((ix1 - 104, iy1 + 30), "PWR", font=load_font(12, bold=True), fill=pal.label)
+    draw.text((ix0 + 50, iy1 + 30), "MENU", font=menu_font, fill=pal.label)
+    draw.text((ix1 - 50 - (pwr_bb[2] - pwr_bb[0]), iy1 + 30), "PWR", font=menu_font, fill=pal.label)
 
     base = add_noise(base, amount=8 if style != "carbon" else 6, seed=seed)
     base = draw_drop_shadow(base, shell, 24)
 
-    # Apply transparency mask for screen area
     mask = Image.new("L", (w, h), 255)
     mdraw = ImageDraw.Draw(mask)
     mdraw.rounded_rectangle((ix0, iy0, ix1, iy1), radius=4, fill=0)
