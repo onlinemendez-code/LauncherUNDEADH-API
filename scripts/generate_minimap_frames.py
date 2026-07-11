@@ -14,9 +14,10 @@ OUT = Path("/workspace/minimap-frames")
 
 # DayZ HUD: wide landscape minimap + thin compass strip on top (not square).
 INNER_W = 1120
-COMPASS_H = 52
+COMPASS_H = 58
+COMPASS_GAP = 10
 MAP_H = 580
-INNER_H = COMPASS_H + MAP_H
+INNER_H = COMPASS_H + COMPASS_GAP + MAP_H
 LABEL_BAND_H = 54
 PAD_TOP = LABEL_BAND_H + 34
 PAD_SIDE = 40
@@ -166,6 +167,71 @@ def draw_led(draw: ImageDraw.ImageDraw, x: int, y: int, color: tuple[int, int, i
     draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=color)
 
 
+def inner_compass_box() -> tuple[int, int, int, int]:
+    ix0, iy0, ix1, _ = inner_box()
+    return ix0 + 6, iy0 + 4, ix1 - 6, iy0 + COMPASS_H - 4
+
+
+def inner_map_box() -> tuple[int, int, int, int]:
+    ix0, iy0, ix1, iy1 = inner_box()
+    map_y0 = iy0 + COMPASS_H + COMPASS_GAP
+    return ix0, map_y0, ix1, iy1
+
+
+def draw_compass_housing(
+    draw: ImageDraw.ImageDraw,
+    pal: Palette,
+    ix0: int,
+    iy0: int,
+    ix1: int,
+    iy1: int,
+) -> int:
+    """Draw a distinct physical compass module; returns map area top Y."""
+    cx0, cy0, cx1, cy1 = inner_compass_box()
+    split_y = iy0 + COMPASS_H
+    map_y0 = iy0 + COMPASS_H + COMPASS_GAP
+
+    housing = (ix0 - 6, iy0 - 6, ix1 + 6, split_y + 6)
+    rounded_rect(draw, housing, 8, pal.body_dark, pal.bezel, 2)
+    rounded_rect(draw, (housing[0] + 3, housing[1] + 3, housing[2] - 3, housing[3] - 3), 7, pal.bezel)
+
+    compass_well = (cx0 - 5, cy0 - 4, cx1 + 5, cy1 + 4)
+    rounded_rect(draw, compass_well, 6, pal.bezel)
+    rounded_rect(draw, (cx0 - 2, cy0 - 2, cx1 + 2, cy1 + 2), 5, (8, 10, 7, 255), pal.accent, 1)
+
+    draw.line((cx0, cy0 - 1, cx1, cy0 - 1), fill=pal.body_light, width=1)
+    draw.line((cx0, cy1 + 1, cx1, cy1 + 1), fill=pal.accent, width=2)
+
+    # Divider channel between compass module and map screen
+    divider = (ix0 - 8, split_y, ix1 + 8, map_y0)
+    draw.rectangle(divider, fill=pal.bezel)
+    draw.line((ix0 - 4, split_y + 2, ix1 + 4, split_y + 2), fill=pal.body_light, width=1)
+    draw.line((ix0 - 4, map_y0 - 2, ix1 + 4, map_y0 - 2), fill=pal.body_dark, width=2)
+
+    # Compass label plate (in top bezel, outside transparent window)
+    tag_font = load_font(10, bold=True)
+    tag = "COMPASS"
+    tb = tag_font.getbbox(tag)
+    tw = tb[2] - tb[0]
+    tag_x = housing[0] + 12
+    tag_y = housing[1] + 5
+    rounded_rect(draw, (tag_x - 4, tag_y - 2, tag_x + tw + 8, tag_y + 12), 4, (*pal.body[:3], 230), pal.accent, 1)
+    draw.text((tag_x, tag_y), tag, font=tag_font, fill=pal.accent)
+
+    # North marker in top bezel
+    ncx = (cx0 + cx1) // 2
+    tri_y = max(housing[1] + 4, cy0 - 12)
+    draw.polygon([(ncx, tri_y), (ncx - 6, tri_y + 8), (ncx + 6, tri_y + 8)], fill=pal.accent)
+
+    # Bearing ticks along bottom compass bezel (opaque)
+    tick_y = cy1 + 2
+    for i, x in enumerate(range(cx0 + 30, cx1 - 10, 44)):
+        h = 5 if i % 2 == 0 else 3
+        draw.line((x, tick_y, x, tick_y + h), fill=pal.body_light, width=1)
+
+    return map_y0
+
+
 def draw_brand_label(
     draw: ImageDraw.ImageDraw,
     shell: tuple[int, int, int, int],
@@ -215,13 +281,20 @@ def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
     rounded_rect(draw, screen_recess, 12, pal.bezel)
     rounded_rect(draw, (ix0 - 8, iy0 - 8, ix1 + 8, iy1 + 8), 10, pal.body_dark, pal.bezel, 2)
 
-    split_y = iy0 + COMPASS_H
-    draw.rectangle((ix0 - 10, split_y - 4, ix1 + 10, split_y + 4), fill=pal.bezel)
-    draw.line((ix0 - 4, split_y - 1, ix1 + 4, split_y - 1), fill=pal.body_light, width=1)
-    draw.line((ix0 - 4, split_y + 1, ix1 + 4, split_y + 1), fill=pal.accent, width=2)
+    draw_compass_housing(draw, pal, ix0, iy0, ix1, iy1)
 
-    draw.rounded_rectangle((ix0, iy0, ix1, iy1), radius=5, outline=pal.body_light, width=2)
-    draw.rounded_rectangle((ix0 + 1, iy0 + 1, ix1 - 1, iy1 - 1), radius=4, outline=(0, 0, 0, 120), width=1)
+    mx0, my0, mx1, my1 = inner_map_box()
+    draw.rounded_rectangle((mx0, my0, mx1, my1), radius=5, outline=pal.body_light, width=2)
+    draw.rounded_rectangle((mx0 + 1, my0 + 1, mx1 - 1, my1 - 1), radius=4, outline=(0, 0, 0, 120), width=1)
+
+    map_font = load_font(10, bold=True)
+    map_tag = "MAP"
+    mb = map_font.getbbox(map_tag)
+    map_tag_w = mb[2] - mb[0]
+    map_tag_x = mx0 + 8
+    map_tag_y = my0 - 16
+    rounded_rect(draw, (map_tag_x - 4, map_tag_y - 2, map_tag_x + map_tag_w + 8, map_tag_y + 12), 4, (*pal.body[:3], 230), pal.body_light, 1)
+    draw.text((map_tag_x, map_tag_y), map_tag, font=map_font, fill=pal.body_light)
 
     screw_pts = [
         (shell[0] + 28, shell[1] + 28),
@@ -277,7 +350,10 @@ def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
 
     mask = Image.new("L", (w, h), 255)
     mdraw = ImageDraw.Draw(mask)
-    mdraw.rounded_rectangle((ix0, iy0, ix1, iy1), radius=4, fill=0)
+    cx0, cy0, cx1, cy1 = inner_compass_box()
+    mx0, my0, mx1, my1 = inner_map_box()
+    mdraw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=3, fill=0)
+    mdraw.rounded_rectangle((mx0, my0, mx1, my1), radius=4, fill=0)
     rgba = base.split()
     alpha = Image.composite(rgba[3], Image.new("L", (w, h), 0), mask)
     base = Image.merge("RGBA", [*rgba[:3], alpha])
@@ -312,11 +388,10 @@ def save_set() -> list[Path]:
     # Guide overlay showing compass/map zones
     guide = build_frame(PALETTES["garmin-foretrex"], "garmin", 99).copy()
     gdraw = ImageDraw.Draw(guide)
-    ix0, iy0, ix1, iy1 = inner_box()
-    gdraw.rectangle((ix0, iy0, ix1, iy0 + COMPASS_H), outline=(255, 220, 80, 180), width=2)
-    gdraw.rectangle((ix0, iy0 + COMPASS_H, ix1, iy1), outline=(80, 180, 255, 180), width=2)
-    gdraw.text((ix0 + 8, iy0 + 8), "COMPASS", font=load_font(16, True), fill=(255, 220, 80, 220))
-    gdraw.text((ix0 + 8, iy0 + COMPASS_H + 8), "MAP", font=load_font(16, True), fill=(80, 180, 255, 220))
+    cx0, cy0, cx1, cy1 = inner_compass_box()
+    mx0, my0, mx1, my1 = inner_map_box()
+    gdraw.rectangle((cx0, cy0, cx1, cy1), outline=(255, 220, 80, 200), width=2)
+    gdraw.rectangle((mx0, my0, mx1, my1), outline=(80, 180, 255, 200), width=2)
     guide_path = OUT / "00-layout-guide.png"
     guide.save(guide_path, "PNG", optimize=True)
     saved.append(guide_path)
