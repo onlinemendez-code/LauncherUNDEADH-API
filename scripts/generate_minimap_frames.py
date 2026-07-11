@@ -12,14 +12,14 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 OUT = Path("/workspace/minimap-frames")
 
-# Inner transparent viewport (compass strip + map), tuned for DayZ HUD proportions.
-INNER_W = 760
-COMPASS_H = 78
-MAP_H = 620
+# DayZ HUD: wide landscape minimap + thin compass strip on top (not square).
+INNER_W = 1120
+COMPASS_H = 52
+MAP_H = 580
 INNER_H = COMPASS_H + MAP_H
-PAD_TOP = 54
-PAD_SIDE = 58
-PAD_BOTTOM = 92
+PAD_TOP = 46
+PAD_SIDE = 40
+PAD_BOTTOM = 68
 
 
 @dataclass
