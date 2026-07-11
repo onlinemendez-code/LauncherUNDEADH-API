@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Generate rugged device-style frames for DayZ minimap + compass HUD overlays."""
+"""Generate DayZ-style minimap device frames with smooth anti-aliased rendering."""
 
 from __future__ import annotations
 
-import math
 import random
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 OUT = Path("/workspace/minimap-frames")
+RENDER_SCALE = 4
 
-# DayZ HUD: wide landscape minimap + thin compass strip on top (not square).
 INNER_W = 1120
 COMPASS_H = 58
 COMPASS_GAP = 10
@@ -26,7 +25,6 @@ PAD_BOTTOM = 68
 
 @dataclass
 class Palette:
-    name: str
     body: tuple[int, int, int, int]
     body_dark: tuple[int, int, int, int]
     body_light: tuple[int, int, int, int]
@@ -34,71 +32,78 @@ class Palette:
     accent: tuple[int, int, int, int]
     screw: tuple[int, int, int, int]
     label: tuple[int, int, int, int]
+    glow: tuple[int, int, int, int]
     rubber: tuple[int, int, int, int] | None = None
 
 
+# Muted, worn palettes inspired by DayZ HUD / survival gear.
 PALETTES = {
     "garmin-foretrex": Palette(
-        name="GARMIN FORETREX 401",
-        body=(58, 68, 48, 255),
-        body_dark=(34, 40, 28, 255),
-        body_light=(92, 104, 72, 255),
-        bezel=(20, 24, 16, 255),
-        accent=(132, 156, 84, 255),
-        screw=(168, 174, 148, 255),
-        label=(214, 222, 188, 255),
-        rubber=(36, 40, 30, 255),
+        body=(54, 50, 40, 255),
+        body_dark=(30, 28, 22, 255),
+        body_light=(78, 72, 58, 255),
+        bezel=(18, 16, 13, 255),
+        accent=(138, 126, 74, 255),
+        screw=(112, 106, 90, 255),
+        label=(188, 180, 158, 255),
+        glow=(88, 168, 72, 255),
+        rubber=(34, 32, 26, 255),
     ),
     "tactical-olive": Palette(
-        name="TACTICAL GPS",
-        body=(52, 58, 42, 255),
-        body_dark=(28, 32, 22, 255),
-        body_light=(78, 86, 60, 255),
-        bezel=(14, 16, 12, 255),
-        accent=(168, 132, 52, 255),
-        screw=(108, 112, 96, 255),
-        label=(214, 210, 188, 255),
-        rubber=(20, 22, 16, 255),
+        body=(50, 48, 38, 255),
+        body_dark=(26, 24, 19, 255),
+        body_light=(74, 70, 56, 255),
+        bezel=(14, 13, 10, 255),
+        accent=(154, 118, 52, 255),
+        screw=(98, 94, 80, 255),
+        label=(184, 178, 158, 255),
+        glow=(196, 148, 48, 255),
+        rubber=(22, 20, 16, 255),
     ),
     "soviet-metal": Palette(
-        name="ПРИБОР НАВИГАЦИИ",
-        body=(98, 92, 78, 255),
-        body_dark=(58, 54, 46, 255),
-        body_light=(132, 126, 108, 255),
-        bezel=(36, 34, 30, 255),
-        accent=(150, 72, 44, 255),
-        screw=(72, 68, 60, 255),
-        label=(220, 214, 196, 255),
+        body=(82, 76, 64, 255),
+        body_dark=(48, 44, 38, 255),
+        body_light=(112, 104, 88, 255),
+        bezel=(30, 28, 24, 255),
+        accent=(132, 68, 40, 255),
+        screw=(68, 64, 56, 255),
+        label=(198, 190, 170, 255),
+        glow=(148, 72, 44, 255),
     ),
     "carbon-black": Palette(
-        name="NAV DISPLAY",
-        body=(24, 26, 28, 255),
-        body_dark=(10, 11, 12, 255),
-        body_light=(46, 48, 52, 255),
-        bezel=(4, 4, 5, 255),
-        accent=(72, 168, 196, 255),
-        screw=(88, 92, 96, 255),
-        label=(196, 200, 206, 255),
-        rubber=(14, 15, 16, 255),
+        body=(34, 34, 32, 255),
+        body_dark=(16, 16, 15, 255),
+        body_light=(54, 54, 50, 255),
+        bezel=(8, 8, 7, 255),
+        accent=(98, 138, 148, 255),
+        screw=(74, 76, 72, 255),
+        label=(172, 176, 170, 255),
+        glow=(72, 148, 168, 255),
+        rubber=(14, 14, 13, 255),
     ),
     "worn-field": Palette(
-        name="FIELD NAV UNIT",
-        body=(74, 66, 52, 255),
-        body_dark=(42, 38, 30, 255),
-        body_light=(108, 98, 78, 255),
-        bezel=(24, 22, 18, 255),
-        accent=(132, 108, 62, 255),
-        screw=(118, 110, 92, 255),
-        label=(228, 220, 200, 255),
-        rubber=(32, 28, 22, 255),
+        body=(66, 58, 46, 255),
+        body_dark=(38, 34, 28, 255),
+        body_light=(96, 86, 70, 255),
+        bezel=(22, 20, 16, 255),
+        accent=(124, 100, 58, 255),
+        screw=(104, 96, 80, 255),
+        label=(196, 186, 164, 255),
+        glow=(118, 98, 56, 255),
+        rubber=(28, 25, 20, 255),
     ),
 }
 
 
+def sc(v: int | float) -> int:
+    return int(round(v * RENDER_SCALE))
+
+
 def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    size = max(12, sc(size))
     paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     ]
     for p in paths:
         if Path(p).exists():
@@ -107,64 +112,11 @@ def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
 
 
 def canvas_size() -> tuple[int, int]:
-    w = INNER_W + PAD_SIDE * 2
-    h = INNER_H + PAD_TOP + PAD_BOTTOM
-    return w, h
+    return INNER_W + PAD_SIDE * 2, INNER_H + PAD_TOP + PAD_BOTTOM
 
 
 def inner_box() -> tuple[int, int, int, int]:
     return PAD_SIDE, PAD_TOP, PAD_SIDE + INNER_W, PAD_TOP + INNER_H
-
-
-def add_noise(img: Image.Image, amount: int = 10, seed: int = 7) -> Image.Image:
-    rng = random.Random(seed)
-    w, h = img.size
-    noise = Image.new("L", (w, h))
-    px = noise.load()
-    for y in range(0, h, 2):
-        for x in range(0, w, 2):
-            v = rng.randint(220 - amount, 255)
-            px[x, y] = v
-            if x + 1 < w:
-                px[x + 1, y] = v
-            if y + 1 < h:
-                px[x, y + 1] = v
-    noise = noise.filter(ImageFilter.GaussianBlur(0.8))
-    rgb = img.convert("RGB")
-    n3 = Image.merge("RGB", [noise, noise, noise])
-    mixed = ImageChops.multiply(rgb, n3)
-    out = Image.merge("RGBA", (*mixed.split(), img.split()[3]))
-    return out
-
-
-def draw_drop_shadow(base: Image.Image, box: tuple[int, int, int, int], radius: int, spread: int = 10) -> Image.Image:
-    w, h = base.size
-    shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shadow)
-    x0, y0, x1, y1 = box
-    sdraw.rounded_rectangle((x0 + 6, y0 + 8, x1 + 6, y1 + 8), radius=radius, fill=(0, 0, 0, 120))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(8))
-    return Image.alpha_composite(shadow, base)
-
-
-def rounded_rect(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], radius: int, fill, outline=None, width: int = 1) -> None:
-    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
-
-
-def draw_screw(draw: ImageDraw.ImageDraw, x: int, y: int, r: int, col: tuple[int, int, int, int], dark: tuple[int, int, int, int]) -> None:
-    draw.ellipse((x - r, y - r, x + r, y + r), fill=col, outline=dark, width=2)
-    draw.line((x - r + 3, y, x + r - 3, y), fill=dark, width=2)
-
-
-def draw_side_button(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], pal: Palette) -> None:
-    rounded_rect(draw, box, 6, pal.body_dark, pal.bezel, 2)
-    lx0, ly0, lx1, ly1 = box
-    draw.line((lx0 + 4, ly0 + 5, lx1 - 4, ly0 + 5), fill=pal.body_light, width=2)
-
-
-def draw_led(draw: ImageDraw.ImageDraw, x: int, y: int, color: tuple[int, int, int, int]) -> None:
-    draw.ellipse((x - 5, y - 5, x + 5, y + 5), fill=(10, 12, 8, 255))
-    draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=color)
 
 
 def inner_compass_box() -> tuple[int, int, int, int]:
@@ -174,191 +126,231 @@ def inner_compass_box() -> tuple[int, int, int, int]:
 
 def inner_map_box() -> tuple[int, int, int, int]:
     ix0, iy0, ix1, iy1 = inner_box()
-    map_y0 = iy0 + COMPASS_H + COMPASS_GAP
-    return ix0, map_y0, ix1, iy1
+    return ix0, iy0 + COMPASS_H + COMPASS_GAP, ix1, iy1
 
 
-def draw_compass_housing(
-    draw: ImageDraw.ImageDraw,
-    pal: Palette,
-    ix0: int,
-    iy0: int,
-    ix1: int,
-    iy1: int,
-) -> int:
-    """Draw a distinct physical compass module; returns map area top Y."""
-    cx0, cy0, cx1, cy1 = inner_compass_box()
-    split_y = iy0 + COMPASS_H
-    map_y0 = iy0 + COMPASS_H + COMPASS_GAP
-
-    housing = (ix0 - 6, iy0 - 6, ix1 + 6, split_y + 6)
-    rounded_rect(draw, housing, 8, pal.body_dark, pal.bezel, 2)
-    rounded_rect(draw, (housing[0] + 3, housing[1] + 3, housing[2] - 3, housing[3] - 3), 7, pal.bezel)
-
-    compass_well = (cx0 - 5, cy0 - 4, cx1 + 5, cy1 + 4)
-    rounded_rect(draw, compass_well, 6, pal.bezel)
-    rounded_rect(draw, (cx0 - 2, cy0 - 2, cx1 + 2, cy1 + 2), 5, (8, 10, 7, 255), pal.accent, 1)
-
-    draw.line((cx0, cy0 - 1, cx1, cy0 - 1), fill=pal.body_light, width=1)
-    draw.line((cx0, cy1 + 1, cx1, cy1 + 1), fill=pal.accent, width=2)
-
-    # Divider channel between compass module and map screen
-    divider = (ix0 - 8, split_y, ix1 + 8, map_y0)
-    draw.rectangle(divider, fill=pal.bezel)
-    draw.line((ix0 - 4, split_y + 2, ix1 + 4, split_y + 2), fill=pal.body_light, width=1)
-    draw.line((ix0 - 4, map_y0 - 2, ix1 + 4, map_y0 - 2), fill=pal.body_dark, width=2)
-
-    # Compass label plate (in top bezel, outside transparent window)
-    tag_font = load_font(10, bold=True)
-    tag = "COMPASS"
-    tb = tag_font.getbbox(tag)
-    tw = tb[2] - tb[0]
-    tag_x = housing[0] + 12
-    tag_y = housing[1] + 5
-    rounded_rect(draw, (tag_x - 4, tag_y - 2, tag_x + tw + 8, tag_y + 12), 4, (*pal.body[:3], 230), pal.accent, 1)
-    draw.text((tag_x, tag_y), tag, font=tag_font, fill=pal.accent)
-
-    # North marker in top bezel
-    ncx = (cx0 + cx1) // 2
-    tri_y = max(housing[1] + 4, cy0 - 12)
-    draw.polygon([(ncx, tri_y), (ncx - 6, tri_y + 8), (ncx + 6, tri_y + 8)], fill=pal.accent)
-
-    # Bearing ticks along bottom compass bezel (opaque)
-    tick_y = cy1 + 2
-    for i, x in enumerate(range(cx0 + 30, cx1 - 10, 44)):
-        h = 5 if i % 2 == 0 else 3
-        draw.line((x, tick_y, x, tick_y + h), fill=pal.body_light, width=1)
-
-    return map_y0
+def sbox(box: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    return sc(box[0]), sc(box[1]), sc(box[2]), sc(box[3])
 
 
-def draw_brand_label(
-    draw: ImageDraw.ImageDraw,
-    shell: tuple[int, int, int, int],
-    screen_top: int,
-    label: str,
-    sub: str,
-    pal: Palette,
-) -> None:
-    font_l = load_font(18, bold=True)
-    font_s = load_font(12, bold=False)
+def vertical_gradient(size: tuple[int, int], top: tuple[int, int, int], bottom: tuple[int, int, int]) -> Image.Image:
+    w, h = size
+    top_img = Image.new("RGB", (w, h), top)
+    bot_img = Image.new("RGB", (w, h), bottom)
+    grad = Image.linear_gradient("L").resize((w, h))
+    return Image.composite(bot_img, top_img, grad)
 
-    tx = shell[0] + 36
-    ty = shell[1] + 14
+
+def rounded_rect(draw: ImageDraw.ImageDraw, box, radius: int, fill, outline=None, width: int = 1) -> None:
+    draw.rounded_rectangle(box, radius=sc(radius), fill=fill, outline=outline, width=max(1, sc(width)))
+
+
+def apply_dayz_finish(img: Image.Image, seed: int, style: str) -> Image.Image:
+    rng = random.Random(seed + 101)
+    w, h = img.size
+
+    grain = Image.effect_noise((w, h), 12).convert("L")
+    grain = grain.filter(ImageFilter.GaussianBlur(0.6))
+    grain_rgb = Image.merge("RGB", [grain, grain, grain])
+    rgb = img.convert("RGB")
+    dusty = ImageChops.multiply(rgb, grain_rgb)
+    img = Image.merge("RGBA", (*dusty.split(), img.split()[3]))
+
+    grime = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    gdraw = ImageDraw.Draw(grime)
+    for _ in range(18 if style != "carbon" else 8):
+        x = rng.randint(0, w)
+        y = rng.randint(0, h)
+        r = rng.randint(sc(20), sc(90))
+        shade = rng.randint(18, 42)
+        gdraw.ellipse((x - r, y - r, x + r, y - r // 2), fill=(shade, shade - 4, shade - 8, rng.randint(16, 34)))
+    grime = grime.filter(ImageFilter.GaussianBlur(sc(8)))
+    img = Image.alpha_composite(img, grime)
+
+    rgb = img.convert("RGB")
+    rgb = ImageEnhance.Color(rgb).enhance(0.72)
+    rgb = ImageEnhance.Contrast(rgb).enhance(1.04)
+    rgb = ImageEnhance.Brightness(rgb).enhance(0.96)
+    return Image.merge("RGBA", (*rgb.split(), img.split()[3]))
+
+
+def draw_screw(draw: ImageDraw.ImageDraw, x: int, y: int, r: int, col, dark) -> None:
+    x, y = sc(x), sc(y)
+    r = sc(r)
+    draw.ellipse((x - r, y - r, x + r, y + r), fill=col, outline=dark, width=max(1, sc(1)))
+    draw.arc((x - r + sc(2), y - r + sc(2), x + r - sc(2), y + r - sc(2)), 20, 160, fill=dark, width=max(1, sc(1)))
+
+
+def draw_side_button(draw: ImageDraw.ImageDraw, box, pal: Palette) -> None:
+    box = sbox(box)
+    rounded_rect(draw, box, 6, pal.body_dark, pal.bezel, 1)
+    draw.line((box[0] + sc(5), box[1] + sc(4), box[2] - sc(5), box[1] + sc(4)), fill=(*pal.body_light[:3], 140), width=max(1, sc(1)))
+
+
+def draw_soft_led(base: Image.Image, x: int, y: int, color) -> None:
+    glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    g = ImageDraw.Draw(glow)
+    cx, cy = sc(x), sc(y)
+    g.ellipse((cx - sc(10), cy - sc(10), cx + sc(10), cy + sc(10)), fill=(*color[:3], 50))
+    glow = glow.filter(ImageFilter.GaussianBlur(sc(5)))
+    base.alpha_composite(glow)
+    draw = ImageDraw.Draw(base)
+    draw.ellipse((cx - sc(4), cy - sc(4), cx + sc(4), cy + sc(4)), fill=(12, 14, 10, 255))
+    draw.ellipse((cx - sc(2), cy - sc(2), cx + sc(2), cy + sc(2)), fill=color)
+
+
+def draw_brand_label(draw: ImageDraw.ImageDraw, shell_u, screen_top: int, label: str, sub: str, pal: Palette) -> None:
+    shell = sbox(shell_u)
+    font_l = load_font(17, bold=True)
+    font_s = load_font(11, bold=False)
+    tx = shell[0] + sc(34)
+    ty = shell[1] + sc(12)
     lb = font_l.getbbox(label)
     sb = font_s.getbbox(sub)
     text_w = max(lb[2] - lb[0], sb[2] - sb[0])
-    text_h = (lb[3] - lb[1]) + 18 + (sb[3] - sb[1])
-    plate = (tx - 10, ty - 6, tx + text_w + 18, min(ty + text_h + 8, screen_top - 8))
-    rounded_rect(draw, plate, 6, (*pal.body_dark[:3], 210), pal.bezel, 1)
+    text_h = (lb[3] - lb[1]) + sc(18) + (sb[3] - sb[1])
+    plate = (tx - sc(10), ty - sc(6), tx + text_w + sc(16), min(ty + text_h + sc(8), sc(screen_top) - sc(8)))
+    rounded_rect(draw, plate, 6, (*pal.body_dark[:3], 215), pal.bezel, 1)
     draw.text((tx, ty), label, font=font_l, fill=pal.label)
-    draw.text((tx, ty + 20), sub, font=font_s, fill=(*pal.label[:3], 220))
+    draw.text((tx, ty + sc(18)), sub, font=font_s, fill=(*pal.label[:3], 210))
+
+
+def draw_compass_housing(draw: ImageDraw.ImageDraw, pal: Palette, ix0: int, iy0: int, ix1: int) -> None:
+    cx0, cy0, cx1, cy1 = inner_compass_box()
+    split_y = iy0 + COMPASS_H
+    map_y0 = iy0 + COMPASS_H + COMPASS_GAP
+    housing = (ix0 - 6, iy0 - 6, ix1 + 6, split_y + 6)
+    hs = sbox(housing)
+
+    rounded_rect(draw, hs, 8, pal.body_dark, pal.bezel, 1)
+    inner_h = (hs[0] + sc(3), hs[1] + sc(3), hs[2] - sc(3), hs[3] - sc(3))
+    rounded_rect(draw, inner_h, 7, pal.bezel)
+
+    cxs = sbox((cx0 - 5, cy0 - 4, cx1 + 5, cy1 + 4))
+    rounded_rect(draw, cxs, 6, pal.bezel)
+    rounded_rect(draw, sbox((cx0 - 2, cy0 - 2, cx1 + 2, cy1 + 2)), 5, (10, 11, 9, 255), pal.accent, 1)
+
+    draw.line((cxs[0], cxs[1] - sc(1), cxs[2], cxs[1] - sc(1)), fill=(*pal.body_light[:3], 120), width=max(1, sc(1)))
+    draw.line((cxs[0], cxs[3] + sc(1), cxs[2], cxs[3] + sc(1)), fill=pal.accent, width=max(1, sc(1)))
+
+    divider = sbox((ix0 - 8, split_y, ix1 + 8, map_y0))
+    draw.rectangle(divider, fill=pal.bezel)
+    draw.line((divider[0] + sc(4), divider[1] + sc(2), divider[2] - sc(4), divider[1] + sc(2)), fill=(*pal.body_light[:3], 90), width=max(1, sc(1)))
+
+    tag_font = load_font(9, bold=True)
+    tag = "COMPASS"
+    tb = tag_font.getbbox(tag)
+    tw = tb[2] - tb[0]
+    tag_x = hs[0] + sc(10)
+    tag_y = hs[1] + sc(4)
+    rounded_rect(draw, (tag_x - sc(4), tag_y - sc(2), tag_x + tw + sc(8), tag_y + sc(12)), 4, (*pal.body[:3], 220), pal.accent, 1)
+    draw.text((tag_x, tag_y), tag, font=tag_font, fill=pal.accent)
+
+    ncx = (cxs[0] + cxs[2]) // 2
+    tri_y = max(hs[1] + sc(4), cxs[1] - sc(10))
+    draw.polygon([(ncx, tri_y), (ncx - sc(5), tri_y + sc(7)), (ncx + sc(5), tri_y + sc(7))], fill=pal.accent)
 
 
 def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
     w, h = canvas_size()
-    base = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    rw, rh = sc(w), sc(h)
+    base = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
     draw = ImageDraw.Draw(base)
 
     ix0, iy0, ix1, iy1 = inner_box()
-    outer = (14, 12, w - 14, h - 12)
-    shell = (outer[0] + 6, outer[1] + 6, outer[2] - 6, outer[3] - 6)
-    face = (shell[0] + 10, shell[1] + 10, shell[2] - 10, shell[3] - 10)
+    shell_u = (20, 18, w - 20, h - 18)
+    outer = sbox((14, 12, w - 14, h - 12))
+    shell = sbox(shell_u)
+    face = sbox((30, 28, w - 30, h - 30))
 
     if pal.rubber and style in {"garmin", "field"}:
         for bx in (4, w - 30):
-            rounded_rect(draw, (bx, h // 2 - 84, bx + 24, h // 2 + 84), 10, pal.rubber, pal.bezel, 2)
+            rounded_rect(draw, sbox((bx, h // 2 - 84, bx + 24, h // 2 + 84)), 10, pal.rubber, pal.bezel, 1)
 
-    rounded_rect(draw, outer, 30, pal.bezel)
-    rounded_rect(draw, shell, 24, pal.body_dark, pal.bezel, 3)
-    rounded_rect(draw, face, 18, pal.body, pal.body_light, 2)
+    rounded_rect(draw, outer, 28, pal.bezel)
+    rounded_rect(draw, shell, 22, pal.body_dark, pal.bezel, 2)
 
-    # Bevel highlights / shadows
-    draw.arc((face[0], face[1], face[2], face[1] + 50), 200, 340, fill=pal.body_light, width=4)
-    draw.arc((face[0], face[3] - 40, face[2], face[3]), 20, 160, fill=pal.body_dark, width=5)
+    face_grad = vertical_gradient((face[2] - face[0], face[3] - face[1]), pal.body_light[:3], pal.body_dark[:3])
+    mask_face = Image.new("L", (rw, rh), 0)
+    ImageDraw.Draw(mask_face).rounded_rectangle(face, radius=sc(16), fill=255)
+    grad_rgba = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
+    grad_rgba.paste(face_grad, (face[0], face[1]))
+    grad_rgba.putalpha(mask_face)
+    base = Image.alpha_composite(base, grad_rgba)
+    draw = ImageDraw.Draw(base)
+    rounded_rect(draw, face, 16, None, pal.body_light, 1)
 
-    screen_recess = (ix0 - 14, iy0 - 14, ix1 + 14, iy1 + 14)
-    rounded_rect(draw, screen_recess, 12, pal.bezel)
-    rounded_rect(draw, (ix0 - 8, iy0 - 8, ix1 + 8, iy1 + 8), 10, pal.body_dark, pal.bezel, 2)
+    screen_recess = sbox((ix0 - 14, iy0 - 14, ix1 + 14, iy1 + 14))
+    rounded_rect(draw, screen_recess, 11, pal.bezel)
+    rounded_rect(draw, sbox((ix0 - 8, iy0 - 8, ix1 + 8, iy1 + 8)), 9, pal.body_dark, pal.bezel, 1)
 
-    draw_compass_housing(draw, pal, ix0, iy0, ix1, iy1)
+    draw_compass_housing(draw, pal, ix0, iy0, ix1)
 
     mx0, my0, mx1, my1 = inner_map_box()
-    draw.rounded_rectangle((mx0, my0, mx1, my1), radius=5, outline=pal.body_light, width=2)
-    draw.rounded_rectangle((mx0 + 1, my0 + 1, mx1 - 1, my1 - 1), radius=4, outline=(0, 0, 0, 120), width=1)
+    ms = sbox((mx0, my0, mx1, my1))
+    draw.rounded_rectangle(ms, radius=sc(4), outline=(*pal.body_light[:3], 150), width=max(1, sc(1)))
 
-    map_font = load_font(10, bold=True)
+    map_font = load_font(9, bold=True)
     map_tag = "MAP"
     mb = map_font.getbbox(map_tag)
     map_tag_w = mb[2] - mb[0]
-    map_tag_x = mx0 + 8
-    map_tag_y = my0 - 16
-    rounded_rect(draw, (map_tag_x - 4, map_tag_y - 2, map_tag_x + map_tag_w + 8, map_tag_y + 12), 4, (*pal.body[:3], 230), pal.body_light, 1)
+    map_tag_x = ms[0] + sc(8)
+    map_tag_y = ms[1] - sc(14)
+    rounded_rect(draw, (map_tag_x - sc(4), map_tag_y - sc(2), map_tag_x + map_tag_w + sc(8), map_tag_y + sc(12)), 4, (*pal.body[:3], 220), pal.body_light, 1)
     draw.text((map_tag_x, map_tag_y), map_tag, font=map_font, fill=pal.body_light)
 
-    screw_pts = [
-        (shell[0] + 28, shell[1] + 28),
-        (shell[2] - 28, shell[1] + 28),
-        (shell[0] + 28, shell[3] - 28),
-        (shell[2] - 28, shell[3] - 28),
-    ]
-    for sx, sy in screw_pts:
-        draw_screw(draw, sx, sy, 9, pal.screw, pal.body_dark)
+    for sx, sy in (
+        (shell_u[0] + 28, shell_u[1] + 28),
+        (shell_u[2] - 28, shell_u[1] + 28),
+        (shell_u[0] + 28, shell_u[3] - 28),
+        (shell_u[2] - 28, shell_u[3] - 28),
+    ):
+        draw_screw(draw, sx, sy, 8, pal.screw, pal.body_dark)
 
-    draw_side_button(draw, (shell[0] + 8, iy0 + 70, shell[0] + 26, iy0 + 126), pal)
-    draw_side_button(draw, (shell[0] + 8, iy0 + 146, shell[0] + 26, iy0 + 202), pal)
-    draw_side_button(draw, (shell[2] - 26, iy0 + 100, shell[2] - 8, iy0 + 168), pal)
-    draw_side_button(draw, (shell[2] - 26, iy0 + 186, shell[2] - 8, iy0 + 242), pal)
+    draw_side_button(draw, (shell_u[0] + 8, iy0 + 70, shell_u[0] + 26, iy0 + 126), pal)
+    draw_side_button(draw, (shell_u[0] + 8, iy0 + 146, shell_u[0] + 26, iy0 + 202), pal)
+    draw_side_button(draw, (shell_u[2] - 26, iy0 + 100, shell_u[2] - 8, iy0 + 168), pal)
+    draw_side_button(draw, (shell_u[2] - 26, iy0 + 186, shell_u[2] - 8, iy0 + 242), pal)
 
     if style == "garmin":
-        draw_led(draw, outer[2] - 52, outer[1] + 24, (70, 210, 90, 255))
         label, sub = "GARMIN", "FORETREX 401"
     elif style == "soviet":
-        for yy in range(outer[1] + 60, outer[3] - 40, 48):
-            draw.ellipse((outer[0] + 14, yy, outer[0] + 24, yy + 10), fill=pal.screw)
-            draw.ellipse((outer[2] - 24, yy, outer[2] - 14, yy + 10), fill=pal.screw)
         label, sub = "ПРИБОР", "НАВИГАЦИИ"
     elif style == "carbon":
-        rng = random.Random(seed + 3)
-        for y in range(outer[1] + 20, outer[3] - 20, 6):
-            for x in range(outer[0] + 20, outer[2] - 20, 14):
-                c = 34 + rng.randint(-6, 6)
-                draw.line((x, y, x + 8, y + 6), fill=(c, c, c + 2, 70), width=1)
         label, sub = "NAV", "DISPLAY"
     elif style == "field":
-        rng = random.Random(seed + 9)
-        for _ in range(40):
-            x = rng.randint(outer[0] + 10, outer[2] - 10)
-            y = rng.randint(outer[1] + 10, outer[3] - 10)
-            draw.ellipse((x, y, x + rng.randint(4, 16), y + rng.randint(2, 8)), fill=(*pal.body_light[:3], 60))
         label, sub = "FIELD", "NAV UNIT"
     else:
-        draw_led(draw, outer[2] - 52, outer[1] + 24, (220, 170, 48, 255))
         label, sub = "TACTICAL", "GPS"
 
-    draw_brand_label(draw, shell, iy0 - 14, label, sub, pal)
+    draw_brand_label(draw, shell_u, iy0 - 14, label, sub, pal)
 
-    menu_font = load_font(12, bold=True)
+    menu_font = load_font(11, bold=True)
     pwr_bb = menu_font.getbbox("PWR")
-    rounded_rect(draw, (ix0 + 36, iy1 + 20, ix1 - 36, iy1 + 48), 9, pal.body_dark, pal.bezel, 2)
-    draw.line((ix0 + 50, iy1 + 26, ix1 - 50, iy1 + 26), fill=pal.body_light, width=1)
-    draw.text((ix0 + 50, iy1 + 30), "MENU", font=menu_font, fill=pal.label)
-    draw.text((ix1 - 50 - (pwr_bb[2] - pwr_bb[0]), iy1 + 30), "PWR", font=menu_font, fill=pal.label)
+    chin = sbox((ix0 + 36, iy1 + 20, ix1 - 36, iy1 + 48))
+    rounded_rect(draw, chin, 8, pal.body_dark, pal.bezel, 1)
+    draw.text((chin[0] + sc(14), chin[1] + sc(8)), "MENU", font=menu_font, fill=pal.label)
+    draw.text((chin[2] - sc(14) - (pwr_bb[2] - pwr_bb[0]), chin[1] + sc(8)), "PWR", font=menu_font, fill=pal.label)
 
-    base = add_noise(base, amount=8 if style != "carbon" else 6, seed=seed)
-    base = draw_drop_shadow(base, shell, 24)
+    if style in {"garmin", "tactical", "field"}:
+        draw_soft_led(base, w - 66, 36, pal.glow if style != "garmin" else (88, 168, 72, 255))
 
-    mask = Image.new("L", (w, h), 255)
+    shadow = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle((shell[0] + sc(6), shell[1] + sc(8), shell[2] + sc(6), shell[3] + sc(8)), sc(22), fill=(0, 0, 0, 90))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(sc(8)))
+    base = Image.alpha_composite(shadow, base)
+
+    mask = Image.new("L", (rw, rh), 255)
     mdraw = ImageDraw.Draw(mask)
-    cx0, cy0, cx1, cy1 = inner_compass_box()
-    mx0, my0, mx1, my1 = inner_map_box()
-    mdraw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=3, fill=0)
-    mdraw.rounded_rectangle((mx0, my0, mx1, my1), radius=4, fill=0)
+    mdraw.rounded_rectangle(sbox(inner_compass_box()), radius=sc(3), fill=0)
+    mdraw.rounded_rectangle(sbox(inner_map_box()), radius=sc(4), fill=0)
     rgba = base.split()
-    alpha = Image.composite(rgba[3], Image.new("L", (w, h), 0), mask)
+    alpha = Image.composite(rgba[3], Image.new("L", (rw, rh), 0), mask)
     base = Image.merge("RGBA", [*rgba[:3], alpha])
 
-    return base
+    out = base.resize((w, h), Image.Resampling.LANCZOS)
+    out = out.filter(ImageFilter.UnsharpMask(radius=1.1, percent=70, threshold=3))
+    return apply_dayz_finish(out, seed, style)
 
 
 def save_set() -> list[Path]:
@@ -380,22 +372,19 @@ def save_set() -> list[Path]:
         saved.append(path_2k)
 
         img_4k = img.resize((img.width * 2, img.height * 2), Image.Resampling.LANCZOS)
+        img_4k = img_4k.filter(ImageFilter.UnsharpMask(radius=0.8, percent=55, threshold=3))
         path_4k = OUT / fname.replace(".png", "-4k.png")
         img_4k.save(path_4k, "PNG", optimize=True)
         saved.append(path_4k)
         print(f"Saved {path_2k.name} and {path_4k.name}")
 
-    # Guide overlay showing compass/map zones
     guide = build_frame(PALETTES["garmin-foretrex"], "garmin", 99).copy()
     gdraw = ImageDraw.Draw(guide)
-    cx0, cy0, cx1, cy1 = inner_compass_box()
-    mx0, my0, mx1, my1 = inner_map_box()
-    gdraw.rectangle((cx0, cy0, cx1, cy1), outline=(255, 220, 80, 200), width=2)
-    gdraw.rectangle((mx0, my0, mx1, my1), outline=(80, 180, 255, 200), width=2)
+    gdraw.rectangle(inner_compass_box(), outline=(210, 168, 72, 180), width=2)
+    gdraw.rectangle(inner_map_box(), outline=(110, 150, 168, 180), width=2)
     guide_path = OUT / "00-layout-guide.png"
     guide.save(guide_path, "PNG", optimize=True)
     saved.append(guide_path)
-    print(f"Saved {guide_path.name}")
 
     import zipfile
 
