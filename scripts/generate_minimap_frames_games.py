@@ -19,7 +19,7 @@ def paint_dayz(base: Image.Image, seed: int) -> None:
     d = ImageDraw.Draw(base)
     cw, ch = base.size[0] // core.RENDER_SCALE, base.size[1] // core.RENDER_SCALE
     shell = core.sbox((16, 14, cw - 16, ch - 12))
-    core.rr(d, shell, 20, (52, 58, 42, 255), (22, 26, 18, 255), 2)
+    core.draw_metro_shell(d, shell, (52, 58, 42, 255), (38, 44, 30, 255), (22, 26, 18, 255))
     for bx in (4, cw - 26):
         core.rr(d, core.sbox((bx, ch // 2 - 78, bx + 22, ch // 2 + 78)), 8, (34, 38, 28, 255))
     d.text((shell[0] + core.sc(14), shell[1] + core.sc(8)), "GARMIN FORETREX", font=core.load_font(8, True), fill=(186, 192, 158, 255))
@@ -31,14 +31,14 @@ def paint_tarkov(base: Image.Image, seed: int) -> None:
     d = ImageDraw.Draw(base)
     cw, ch = base.size[0] // core.RENDER_SCALE, base.size[1] // core.RENDER_SCALE
     shell = core.sbox((10, 10, cw - 10, ch - 8))
-    d.rectangle(shell, fill=(48, 44, 36, 255), outline=(24, 22, 18, 255), width=core.sc(2))
+    core.draw_metro_shell(d, shell, (48, 44, 36, 255), (32, 28, 22, 255), (24, 22, 18, 255))
     # corner brackets like Tarkov UI
     for x, y, dx, dy in ((shell[0], shell[1], 1, 1), (shell[2], shell[1], -1, 1),
                          (shell[0], shell[3], 1, -1), (shell[2], shell[3], -1, -1)):
         d.line((x, y, x + dx * core.sc(28), y), fill=(168, 132, 64, 255), width=core.sc(2))
         d.line((x, y, x, y + dy * core.sc(28)), fill=(168, 132, 64, 255), width=core.sc(2))
     d.text((shell[0] + core.sc(16), shell[1] + core.sc(8)), "ТАКТИЧЕСКАЯ КАРТА", font=core.load_font(8, True), fill=(176, 158, 118, 255))
-    core.metal_tex(d, shell, seed, (56, 52, 44))
+    core.metal_tex(d, shell, seed, (40, 36, 30))
 
 
 def paint_stalker(base: Image.Image, seed: int) -> None:
@@ -99,10 +99,9 @@ def paint_metro(base: Image.Image, seed: int) -> None:
     d = ImageDraw.Draw(base)
     cw, ch = base.size[0] // core.RENDER_SCALE, base.size[1] // core.RENDER_SCALE
     shell = core.sbox((18, 16, cw - 18, ch - 12))
-    core.rr(d, shell, 24, (108, 88, 52, 255), (68, 54, 32, 255), 2)
-    core.rr(d, (shell[0] + core.sc(6), shell[1] + core.sc(6), shell[2] - core.sc(6), shell[3] - core.sc(6)), 20, (72, 58, 36, 255))
+    core.draw_metro_shell(d, shell, (108, 88, 52, 255), (72, 58, 36, 255), (68, 54, 32, 255))
     # leather strap hint top
-    d.rectangle(core.sbox((cw // 2 - 40, 4, cw // 2 + 40, 18)), fill=(62, 42, 28, 255))
+    d.rounded_rectangle(core.sbox((cw // 2 - 40, 4, cw // 2 + 40, 18)), 4, fill=(62, 42, 28, 255))
     d.text((shell[0] + core.sc(20), shell[1] + core.sc(10)), "METRO COMPASS", font=core.load_font(8, True), fill=(220, 200, 160, 255))
 
 
@@ -145,24 +144,24 @@ def paint_scum(base: Image.Image, seed: int) -> None:
 
 
 GAME_PAINTERS = [
-    ("game-01-dayz", "DayZ", "Garmin Foretrex olive survival", "triangle", paint_dayz),
-    ("game-02-tarkov", "Escape from Tarkov", "Tan tactical brackets", "cross", paint_tarkov),
-    ("game-03-stalker", "STALKER", "Green PDA radiation stripe", "strip", paint_stalker),
-    ("game-04-pubg", "PUBG", "Minimal dark rubber rail", "notch", paint_pubg),
-    ("game-05-arma3", "Arma 3", "Military GPS green grid", "triangle", paint_arma),
-    ("game-06-rust", "Rust", "Welded scrap plates", "square", paint_rust),
-    ("game-07-metro", "Metro 2033", "Brass pocket + leather", "diamond", paint_metro),
-    ("game-08-division", "The Division", "SHD orange angular", "strip", paint_division),
-    ("game-09-hunt", "Hunt: Showdown", "Victorian brass corners", "cross", paint_hunt),
-    ("game-10-scum", "SCUM", "Stamped prison metal", "square", paint_scum),
+    ("game-01-dayz", "DayZ", "Garmin Foretrex olive survival", "triangle", paint_dayz, True),
+    ("game-02-tarkov", "Escape from Tarkov", "Tan tactical brackets", "cross", paint_tarkov, True),
+    ("game-03-stalker", "STALKER", "Green PDA radiation stripe", "strip", paint_stalker, False),
+    ("game-04-pubg", "PUBG", "Minimal dark rubber rail", "notch", paint_pubg, False),
+    ("game-05-arma3", "Arma 3", "Military GPS green grid", "triangle", paint_arma, False),
+    ("game-06-rust", "Rust", "Welded scrap plates", "square", paint_rust, False),
+    ("game-07-metro", "Metro 2033", "Brass pocket + leather", "diamond", paint_metro, True),
+    ("game-08-division", "The Division", "SHD orange angular", "strip", paint_division, False),
+    ("game-09-hunt", "Hunt: Showdown", "Victorian brass corners", "cross", paint_hunt, False),
+    ("game-10-scum", "SCUM", "Stamped prison metal", "square", paint_scum, False),
 ]
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     saved = []
-    for i, (slug, title, desc, marker, painter) in enumerate(GAME_PAINTERS):
-        img = core.build_frame(painter, marker, seed=200 + i * 31)
+    for i, (slug, title, desc, marker, painter, metro) in enumerate(GAME_PAINTERS):
+        img = core.build_frame(painter, marker, seed=200 + i * 31, metro_style=metro, dark_compass=metro)
         p = OUT / f"{slug}.png"
         img.save(p, "PNG", optimize=True)
         p4 = OUT / f"{slug}-4k.png"

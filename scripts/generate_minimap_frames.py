@@ -69,6 +69,43 @@ def inner_map_box() -> tuple[int, int, int, int]:
     return ix0, iy0 + COMPASS_H + COMPASS_GAP, ix1, iy1
 
 
+def compass_row_box() -> tuple[int, int, int, int]:
+    ix0, iy0, ix1, _ = inner_box()
+    return ix0, iy0, ix1, iy0 + COMPASS_H
+
+
+METRO_OUTER_R = 24
+METRO_INNER_R = 20
+
+
+def draw_metro_shell(
+    draw: ImageDraw.ImageDraw,
+    shell: tuple[int, int, int, int],
+    outer: tuple[int, int, int, int],
+    inner: tuple[int, int, int, int],
+    outline: tuple[int, int, int, int] | None = None,
+    w: int = 2,
+) -> None:
+    """Double rounded shell like Metro pocket compass."""
+    ol = outline or (outer[0] // 2, outer[1] // 2, outer[2] // 2, 255)
+    rr(draw, shell, METRO_OUTER_R, outer, ol, w)
+    rr(draw, (shell[0] + sc(6), shell[1] + sc(6), shell[2] - sc(6), shell[3] - sc(6)), METRO_INNER_R, inner)
+
+
+def draw_dark_compass_backing(draw: ImageDraw.ImageDraw, color: tuple[int, int, int, int] = (1, 1, 1, 255)) -> None:
+    """Opaque strip behind compass HUD — near-black."""
+    ix0, iy0, ix1, iy1 = compass_row_box()
+    rr(draw, sbox((ix0 - 6, iy0 - 3, ix1 + 6, iy1 + 2)), 10, color)
+
+
+def draw_screen_cutouts_metro(draw: ImageDraw.ImageDraw, seed: int) -> None:
+    ix0, iy0, ix1, iy1 = inner_box()
+    recess = sbox((ix0 - 8, iy0 - 8, ix1 + 8, iy1 + 8))
+    rr(draw, recess, 11, None, (12, 10, 8, 255), 1)
+    gap0, gap1 = iy0 + COMPASS_H, iy0 + COMPASS_H + COMPASS_GAP
+    draw.rectangle(sbox((ix0 - 6, gap0, ix1 + 6, gap1)), fill=(8, 7, 5, 255))
+
+
 def compass_center() -> tuple[int, int]:
     c = inner_compass_box()
     return (c[0] + c[2]) // 2, (c[1] + c[3]) // 2
@@ -370,19 +407,32 @@ def draw_zone_tags(draw: ImageDraw.ImageDraw) -> None:
         draw.text((tx, ty), text, font=f, fill=(170, 158, 120, 255))
 
 
-def build_frame(paint_fn: Callable, marker: str, seed: int) -> Image.Image:
+def build_frame(
+    paint_fn: Callable,
+    marker: str,
+    seed: int,
+    *,
+    metro_style: bool = False,
+    dark_compass: bool = False,
+) -> Image.Image:
     w, h = canvas_size()
     rw, rh = sc(w), sc(h)
     base = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
     paint_fn(base, seed)
     draw = ImageDraw.Draw(base)
-    draw_screen_cutouts(draw, seed)
+    if dark_compass:
+        draw_dark_compass_backing(draw)
+    if metro_style:
+        draw_screen_cutouts_metro(draw, seed)
+    else:
+        draw_screen_cutouts(draw, seed)
     draw_zone_tags(draw)
 
     mask = Image.new("L", (rw, rh), 255)
     md = ImageDraw.Draw(mask)
-    md.rounded_rectangle(sbox(inner_compass_box()), radius=sc(3), fill=0)
-    md.rounded_rectangle(sbox(inner_map_box()), radius=sc(4), fill=0)
+    hole_r_c, hole_r_m = (8, 10) if metro_style else (3, 4)
+    md.rounded_rectangle(sbox(inner_compass_box()), radius=sc(hole_r_c), fill=0)
+    md.rounded_rectangle(sbox(inner_map_box()), radius=sc(hole_r_m), fill=0)
     rgba = base.split()
     alpha = Image.composite(rgba[3], Image.new("L", (rw, rh), 0), mask)
     base = Image.merge("RGBA", [*rgba[:3], alpha])
