@@ -124,6 +124,28 @@ def inner_compass_box() -> tuple[int, int, int, int]:
     return ix0 + 6, iy0 + 4, ix1 - 6, iy0 + COMPASS_H - 4
 
 
+def inner_compass_center_hole() -> tuple[int, int, int, int]:
+    """Transparent window in the middle of the compass strip for HUD."""
+    cx0, cy0, cx1, cy1 = inner_compass_box()
+    w = cx1 - cx0
+    hole_w = int(w * 0.84)
+    hx0 = cx0 + (w - hole_w) // 2
+    return hx0, cy0 + 2, hx0 + hole_w, cy1 - 2
+
+
+def compass_label_box() -> tuple[int, int, int, int]:
+    cx0, cy0, cx1, cy1 = inner_compass_box()
+    hx0, _, _, _ = inner_compass_center_hole()
+    return cx0 + 4, cy0 + 2, hx0 - 6, cy1 - 2
+
+
+def map_label_box() -> tuple[int, int, int, int]:
+    ix0, iy0, ix1, _ = inner_box()
+    split_y = iy0 + COMPASS_H
+    map_y0 = iy0 + COMPASS_H + COMPASS_GAP
+    return ix0 + 6, split_y + 1, ix0 + 90, map_y0 - 1
+
+
 def inner_map_box() -> tuple[int, int, int, int]:
     ix0, iy0, ix1, iy1 = inner_box()
     return ix0, iy0 + COMPASS_H + COMPASS_GAP, ix1, iy1
@@ -215,40 +237,65 @@ def draw_brand_label(draw: ImageDraw.ImageDraw, shell_u, screen_top: int, label:
     draw.text((tx, ty + sc(18)), sub, font=font_s, fill=(*pal.label[:3], 210))
 
 
-def draw_compass_housing(draw: ImageDraw.ImageDraw, pal: Palette, ix0: int, iy0: int, ix1: int) -> None:
+def draw_zone_label(
+    draw: ImageDraw.ImageDraw,
+    box_u: tuple[int, int, int, int],
+    text: str,
+    pal: Palette,
+    accent: bool = False,
+) -> None:
+    box = sbox(box_u)
+    font = load_font(10, bold=True)
+    tb = font.getbbox(text)
+    tw, th = tb[2] - tb[0], tb[3] - tb[1]
+    tx = box[0] + sc(6)
+    ty = box[1] + ((box[3] - box[1]) - th) // 2 - tb[1]
+    fill = pal.accent if accent else pal.label
+    draw.text((tx, ty), text, font=font, fill=fill)
+
+
+def draw_compass_housing(draw: ImageDraw.ImageDraw, base: Image.Image, pal: Palette, ix0: int, iy0: int, ix1: int) -> None:
     cx0, cy0, cx1, cy1 = inner_compass_box()
+    hx0, hy0, hx1, hy1 = inner_compass_center_hole()
     split_y = iy0 + COMPASS_H
     map_y0 = iy0 + COMPASS_H + COMPASS_GAP
-    housing = (ix0 - 6, iy0 - 6, ix1 + 6, split_y + 6)
+
+    housing = (ix0 - 4, iy0 - 4, ix1 + 4, split_y + 4)
     hs = sbox(housing)
+    backing = (12, 14, 11, 255)
 
-    rounded_rect(draw, hs, 8, pal.body_dark, pal.bezel, 1)
-    inner_h = (hs[0] + sc(3), hs[1] + sc(3), hs[2] - sc(3), hs[3] - sc(3))
-    rounded_rect(draw, inner_h, 7, pal.bezel)
+    # Opaque compass backing (full strip)
+    cfull = sbox((cx0 - 2, cy0 - 2, cx1 + 2, cy1 + 2))
+    rounded_rect(draw, cfull, 4, backing, pal.bezel, 1)
 
-    cxs = sbox((cx0 - 5, cy0 - 4, cx1 + 5, cy1 + 4))
-    rounded_rect(draw, cxs, 6, pal.bezel)
-    rounded_rect(draw, sbox((cx0 - 2, cy0 - 2, cx1 + 2, cy1 + 2)), 5, (10, 11, 9, 255), pal.accent, 1)
+    # Side wings darker
+    left_wing = sbox((cx0 - 2, cy0 - 2, hx0 - 1, cy1 + 2))
+    right_wing = sbox((hx1 + 1, cy0 - 2, cx1 + 2, cy1 + 2))
+    draw.rectangle(left_wing, fill=(18, 20, 16, 255))
+    draw.rectangle(right_wing, fill=(18, 20, 16, 255))
 
-    draw.line((cxs[0], cxs[1] - sc(1), cxs[2], cxs[1] - sc(1)), fill=(*pal.body_light[:3], 120), width=max(1, sc(1)))
-    draw.line((cxs[0], cxs[3] + sc(1), cxs[2], cxs[3] + sc(1)), fill=pal.accent, width=max(1, sc(1)))
+    # Center sight frame around transparent hole
+    hole = sbox((hx0, hy0, hx1, hy1))
+    rounded_rect(draw, hole, 3, (8, 9, 8, 255), pal.accent, 1)
+    ncx = (hole[0] + hole[2]) // 2
+    ncy = (hole[1] + hole[3]) // 2
+    draw.line((ncx, hole[1] + sc(2), ncx, hole[3] - sc(2)), fill=(*pal.accent[:3], 120), width=max(1, sc(1)))
+    draw.line((hole[0] + sc(3), ncy, hole[2] - sc(3), ncy), fill=(*pal.accent[:3], 90), width=max(1, sc(1)))
+    draw.polygon(
+        [(ncx, hole[1] - sc(5)), (ncx - sc(4), hole[1] + sc(1)), (ncx + sc(4), hole[1] + sc(1))],
+        fill=pal.accent,
+    )
 
-    divider = sbox((ix0 - 8, split_y, ix1 + 8, map_y0))
+    # Module frame
+    rounded_rect(draw, hs, 6, None, pal.body_light, 1)
+
+    # Divider between compass and map
+    divider = sbox((ix0 - 6, split_y, ix1 + 6, map_y0))
     draw.rectangle(divider, fill=pal.bezel)
-    draw.line((divider[0] + sc(4), divider[1] + sc(2), divider[2] - sc(4), divider[1] + sc(2)), fill=(*pal.body_light[:3], 90), width=max(1, sc(1)))
+    draw.line((divider[0], divider[1] + sc(1), divider[2], divider[1] + sc(1)), fill=(*pal.body_light[:3], 80), width=max(1, sc(1)))
 
-    tag_font = load_font(9, bold=True)
-    tag = "COMPASS"
-    tb = tag_font.getbbox(tag)
-    tw = tb[2] - tb[0]
-    tag_x = hs[0] + sc(10)
-    tag_y = hs[1] + sc(4)
-    rounded_rect(draw, (tag_x - sc(4), tag_y - sc(2), tag_x + tw + sc(8), tag_y + sc(12)), 4, (*pal.body[:3], 220), pal.accent, 1)
-    draw.text((tag_x, tag_y), tag, font=tag_font, fill=pal.accent)
-
-    ncx = (cxs[0] + cxs[2]) // 2
-    tri_y = max(hs[1] + sc(4), cxs[1] - sc(10))
-    draw.polygon([(ncx, tri_y), (ncx - sc(5), tri_y + sc(7)), (ncx + sc(5), tri_y + sc(7))], fill=pal.accent)
+    draw_zone_label(draw, compass_label_box(), "COMPASS", pal, accent=True)
+    draw_zone_label(draw, map_label_box(), "MAP", pal, accent=False)
 
 
 def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
@@ -267,8 +314,18 @@ def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
         for bx in (4, w - 30):
             rounded_rect(draw, sbox((bx, h // 2 - 84, bx + 24, h // 2 + 84)), 10, pal.rubber, pal.bezel, 1)
 
-    rounded_rect(draw, outer, 28, pal.bezel)
-    rounded_rect(draw, shell, 22, pal.body_dark, pal.bezel, 2)
+    rounded_rect(draw, outer, 22, pal.bezel)
+    rounded_rect(draw, shell, 18, pal.body_dark, pal.bezel, 2)
+
+    # Corner brackets — different visual style
+    for bx, by, dx, dy in (
+        (shell[0], shell[1], 1, 1),
+        (shell[2], shell[1], -1, 1),
+        (shell[0], shell[3], 1, -1),
+        (shell[2], shell[3], -1, -1),
+    ):
+        draw.line((bx, by, bx + dx * sc(24), by), fill=pal.accent, width=max(1, sc(2)))
+        draw.line((bx, by, bx, by + dy * sc(24)), fill=pal.accent, width=max(1, sc(2)))
 
     face_grad = vertical_gradient((face[2] - face[0], face[3] - face[1]), pal.body_light[:3], pal.body_dark[:3])
     mask_face = Image.new("L", (rw, rh), 0)
@@ -284,20 +341,11 @@ def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
     rounded_rect(draw, screen_recess, 11, pal.bezel)
     rounded_rect(draw, sbox((ix0 - 8, iy0 - 8, ix1 + 8, iy1 + 8)), 9, pal.body_dark, pal.bezel, 1)
 
-    draw_compass_housing(draw, pal, ix0, iy0, ix1)
+    draw_compass_housing(draw, base, pal, ix0, iy0, ix1)
 
     mx0, my0, mx1, my1 = inner_map_box()
     ms = sbox((mx0, my0, mx1, my1))
-    draw.rounded_rectangle(ms, radius=sc(4), outline=(*pal.body_light[:3], 150), width=max(1, sc(1)))
-
-    map_font = load_font(9, bold=True)
-    map_tag = "MAP"
-    mb = map_font.getbbox(map_tag)
-    map_tag_w = mb[2] - mb[0]
-    map_tag_x = ms[0] + sc(8)
-    map_tag_y = ms[1] - sc(14)
-    rounded_rect(draw, (map_tag_x - sc(4), map_tag_y - sc(2), map_tag_x + map_tag_w + sc(8), map_tag_y + sc(12)), 4, (*pal.body[:3], 220), pal.body_light, 1)
-    draw.text((map_tag_x, map_tag_y), map_tag, font=map_font, fill=pal.body_light)
+    rounded_rect(draw, ms, 4, None, (*pal.body_light[:3], 130), 1)
 
     for sx, sy in (
         (shell_u[0] + 28, shell_u[1] + 28),
@@ -342,7 +390,7 @@ def build_frame(pal: Palette, style: str, seed: int = 0) -> Image.Image:
 
     mask = Image.new("L", (rw, rh), 255)
     mdraw = ImageDraw.Draw(mask)
-    mdraw.rounded_rectangle(sbox(inner_compass_box()), radius=sc(3), fill=0)
+    mdraw.rounded_rectangle(sbox(inner_compass_center_hole()), radius=sc(3), fill=0)
     mdraw.rounded_rectangle(sbox(inner_map_box()), radius=sc(4), fill=0)
     rgba = base.split()
     alpha = Image.composite(rgba[3], Image.new("L", (rw, rh), 0), mask)
@@ -380,8 +428,8 @@ def save_set() -> list[Path]:
 
     guide = build_frame(PALETTES["garmin-foretrex"], "garmin", 99).copy()
     gdraw = ImageDraw.Draw(guide)
-    gdraw.rectangle(inner_compass_box(), outline=(210, 168, 72, 180), width=2)
-    gdraw.rectangle(inner_map_box(), outline=(110, 150, 168, 180), width=2)
+    gdraw.rectangle(inner_compass_center_hole(), outline=(255, 210, 90, 200), width=2)
+    gdraw.rectangle(inner_map_box(), outline=(100, 170, 210, 200), width=2)
     guide_path = OUT / "00-layout-guide.png"
     guide.save(guide_path, "PNG", optimize=True)
     saved.append(guide_path)
